@@ -230,9 +230,6 @@ public class Formulas
 			else if(skill.isSoulBoost())
 				info.damage *= 1.0 + 0.06 * Math.min(attacker.getConsumedSouls(), 5);
 
-			// Gracia Physical Skill Damage Bonus
-			info.damage *= 1.10113;
-
 			if (info.crit)
 			{
 				switch (PositionUtils.getDirectionTo(target, attacker))
@@ -559,7 +556,7 @@ public class Formulas
 
 		return Rnd.chance(finalChance);
 	}
-	
+
 	public static double calcMagicDam(Creature attacker, Creature target, Skill skill, int sps, boolean toMp)
 	{
 		final boolean isCubic = skill.getMatak() > 0;
