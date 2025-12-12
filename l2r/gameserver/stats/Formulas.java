@@ -20,6 +20,8 @@ import l2r.gameserver.network.serverpackets.SystemMessage2;
 import l2r.gameserver.network.serverpackets.components.SystemMsg;
 import l2r.gameserver.skills.EffectType;
 import l2r.gameserver.skills.effects.EffectTemplate;
+import l2r.gameserver.templates.item.ArmorTemplate;
+import l2r.gameserver.templates.item.ItemTemplate;
 import l2r.gameserver.templates.item.WeaponTemplate;
 import l2r.gameserver.utils.PositionUtils;
 
@@ -117,16 +119,11 @@ public class Formulas
 		info.death_rcpt = 0.01 * target.calcStat(Stats.DEATH_VULNERABILITY, attacker, skill);
 		info.lethal1 = skill == null ? 0 : skill.getLethal1() * info.death_rcpt;
 		info.lethal2 = skill == null ? 0 : skill.getLethal2() * info.death_rcpt;
-		info.crit = Rnd.chance(calcCrit(attacker, target, skill, blow));
+		info.crit = calcCrit(attacker, target, skill, blow);
 		info.shld = ((skill == null) || !skill.getShieldIgnore()) && Formulas.calcShldUse(attacker, target);
 		info.lethal = false;
 		info.miss = false;
 		boolean isPvP = attacker.isPlayable() && target.isPlayable();
-
-//		if (info.shld)
-//		{
-//			info.defence += target.getShldDef();
-//		}
 
 		// L2OFF RULE: blow skills ignore shield
 		if (blow)
@@ -230,7 +227,19 @@ public class Formulas
 			info.damage *= 1.10113;
 
 			if (info.crit)
-				info.damage *= 2.;
+			{
+				switch (PositionUtils.getDirectionTo(target, attacker))
+				{
+					case BEHIND:
+						info.damage *= 1.10;   // +10% from behind (retail)
+						break;
+					case SIDE:
+						info.damage *= 1.05;   // +5% from side
+						break;
+					default:
+						break;
+				}
+			}
 		}
 		else
 		{
@@ -243,9 +252,27 @@ public class Formulas
 
 			if (info.crit)
 			{
-				info.damage *= 0.01 * attacker.calcStat(Stats.CRITICAL_DAMAGE, target, skill);
-				info.damage = 2 * target.calcStat(Stats.CRIT_DAMAGE_RECEPTIVE, info.damage, attacker, skill);
+				// Base retail crit multiplier (balanced):
+				double multiplier = 2.1;
+
+				// STR scaling affects crit damage
+				multiplier += attacker.getSTR() * 0.004;  // retail-like
+
+				// Apply multiplier
+				info.damage *= multiplier;
+
+				// Target modifications
+				info.damage = target.calcStat(Stats.CRIT_DAMAGE_RECEPTIVE, info.damage, attacker, skill);
+
+				// Flat crit bonus (dagger weapons have static modifiers)
 				info.damage += info.crit_static;
+
+				// Shield suppression:
+				if (info.shld)
+				{
+					// Shield reduces critical effectiveness by 35%
+					info.damage *= 0.65;
+				}
 			}
 		}
 
@@ -277,18 +304,6 @@ public class Formulas
 				}
 			}
 		}
-
-		if (skill == null || !skill.isChargeBoost())
-			switch(PositionUtils.getDirectionTo(target, attacker))
-			{
-				case BEHIND:
-					info.damage *= 1.2;
-					break;
-				case SIDE:
-					info.damage *= 1.1;
-					break;
-			}
-
 		if (ss && !blow)
 		{
 			info.damage *= 2.0;
@@ -297,12 +312,10 @@ public class Formulas
 		info.damage *= 70. / info.defence;
 		info.damage = attacker.calcStat(Stats.PHYSICAL_DAMAGE, info.damage, target, skill);
 
-//		if(info.shld && Rnd.chance(5))
-//			info.damage = 1;
-
-		// Real L2OFF Shield System
+		// RETAIL SHIELD DAMAGE HANDLING
 		if (info.shld)
 		{
+			// PERFECT BLOCK → 0 DAMAGE
 			if (target.isPerfectBlock())
 			{
 				info.damage = 0;
@@ -310,11 +323,11 @@ public class Formulas
 			}
 			else
 			{
-				info.damage *= 0.75; // NORMAL BLOCK
+				// NORMAL BLOCK → 75% damage
+				info.damage *= 0.75;
 				target.sendPacket(SystemMsg.YOUR_SHIELD_DEFENSE_HAS_SUCCEEDED);
 			}
 		}
-
 
 
 		if (isPvP)
@@ -441,54 +454,6 @@ public class Formulas
 				target.abortCast(false, true);
 			}
 		}
-		
-		
-		//FIX SIEGE MANAGER ATTACK
-//		//FIXME TESTMY
-//		if (target.isAttackable(attacker))
-//		{
-//			if (!target.isRaid() && !target.isMinion() && target.getLevel() >= Config.MIN_NPC_LEVEL_DMG_PENALTY && attacker != null && target.getLevel() - attacker.getLevel() >= 2) 
-//			{
-//				final int levelDiff = target.getLevel() - attacker.getLevel() - 1;
-//				if (skill != null)
-//				{
-//					if (levelDiff >= Config.NPC_CRIT_DMG_PENALTY.length)
-//					{
-//						info.damage *= Config.NPC_SKILL_DMG_PENALTY[Config.NPC_SKILL_DMG_PENALTY.length - 1];
-//					}
-//					else {
-//						info.damage *= Config.NPC_SKILL_DMG_PENALTY[levelDiff];
-//					}
-//				}
-//				else if (info.crit)
-//				{
-//					if (levelDiff >= Config.NPC_CRIT_DMG_PENALTY.length)
-//					{
-//						info.damage *= Config.NPC_CRIT_DMG_PENALTY[Config.NPC_CRIT_DMG_PENALTY.length - 1];
-//					}
-//					else
-//					{
-//						info.damage *= Config.NPC_CRIT_DMG_PENALTY[levelDiff];
-//					}
-//				}
-//				else {
-//					if (levelDiff >= Config.NPC_DMG_PENALTY.length)
-//					{
-//						info.damage *= Config.NPC_DMG_PENALTY[Config.NPC_DMG_PENALTY.length - 1];
-//					}
-//					else
-//					{
-//						info.damage *= Config.NPC_DMG_PENALTY[levelDiff];
-//					}
-//				}
-//				
-//			}
-//		}
-
-		// Synerge - Add the damage done to the player stats
-		//		if (attacker.isPlayer() && info.damage > 5)
-		//			attacker.getPlayer().addPlayerStats(Ranking.STAT_TOP_DAMAGE, (long)info.damage);
-
 		return info;
 	}
 
@@ -696,8 +661,8 @@ public class Formulas
 		{
 			target.abortCast(false, true);
 		}
-		
-		
+
+
 		//FIXME siege manager
 //		//FIXME TESTMY
 //		if (target.isAttackable(attacker))
@@ -772,31 +737,25 @@ public class Formulas
 	}
 
 	@SuppressWarnings("incomplete-switch")
-	public static double calcCrit(Creature attacker, Creature target, Skill skill, boolean blow)
+	public static boolean calcCrit(Creature attacker, Creature target, Skill skill, boolean blow)
 	{
-		if (attacker.isPlayer() && (attacker.getActiveWeaponItem() == null))
-		{
-			return 0;
-		}
-		if (skill != null)
-		{
-			return skill.getCriticalRate() * (blow ? BaseStats.DEX.calcBonus(attacker) : BaseStats.STR.calcBonus(attacker)) * 0.01 * attacker.calcStat(Stats.SKILL_CRIT_CHANCE_MOD, target, skill);
-		}
+		// Blow crit handled separately in blow engine (Patch 4)
+		if (blow)
+			return false;
 
-		double rate = attacker.getCriticalHit(target, null) * 0.01 * target.calcStat(Stats.CRIT_CHANCE_RECEPTIVE, attacker, skill);
+		double critRate = attacker.calcStat(Stats.CRITICAL_RATE, attacker.getCriticalHit(target, skill), target, skill);
 
-		switch (PositionUtils.getDirectionTo(target, attacker))
-		{
-			case BEHIND:
-				rate *= 1.4;
-				break;
-			case SIDE:
-				rate *= 1.2;
-				break;
-		}
+		// Level difference penalty
+		int diff = target.getLevel() - attacker.getLevel();
+		if (diff > 2)
+			critRate -= diff * 0.5;
 
-		return rate / 10;
+		// Minimum cap
+		critRate = Math.max(0, critRate);
+
+		return Rnd.chance(critRate);
 	}
+
 
 	public static boolean calcMCrit(double mRate)
 	{
@@ -902,49 +861,50 @@ public class Formulas
 	 * @param attacker
 	 * @param target
 	 * @return */
-//	public static boolean calcShldUse(Creature attacker, Creature target)
-//	{
-//		WeaponTemplate template = target.getSecondaryWeaponItem();
-//		if ((template == null) || (template.getItemType() != WeaponTemplate.WeaponType.NONE))
-//		{
-//			return false;
-//		}
-//		int angle = (int) target.calcStat(Stats.SHIELD_ANGLE, attacker, null);
-//		if (!PositionUtils.isFacing(target, attacker, angle))
-//		{
-//			return false;
-//		}
-//		return Rnd.chance((int) target.calcStat(Stats.SHIELD_RATE, attacker, null));
-//	}
+	/**
+	 * Calculates shield block chance (Retail+)
+	 */
 	public static boolean calcShldUse(Creature attacker, Creature target)
 	{
 		target.setPerfectBlock(false); // reset flag
 
-		// Blow skills bypass shield
-		Skill skill = attacker.getCastingSkill();
-		if (skill != null && skill.isBlowSkill())
+		// Shields in this project are WEAPONS with type NONE and LEFT_HAND slot
+		ItemInstance sh = target.getSecondaryWeaponInstance();
+		if (sh == null)
 			return false;
 
-		// Check shield equipped
-		WeaponTemplate shield = target.getSecondaryWeaponItem();
-		if (shield == null || shield.getItemType() != WeaponTemplate.WeaponType.NONE)
+		ItemTemplate tpl = sh.getTemplate();
+		if (!(tpl instanceof WeaponTemplate))
 			return false;
 
-		// Angle (strict L2OFF)
-		int angle = (int) target.calcStat(Stats.SHIELD_ANGLE, attacker, null);
+		WeaponTemplate wt = (WeaponTemplate) tpl;
+
+		// Must be LEFT_HAND and WeaponType.NONE to be a shield
+		if (tpl.getBodyPart() != ItemTemplate.SLOT_L_HAND)
+			return false;
+
+		if (wt.getItemType() != WeaponTemplate.WeaponType.NONE)
+			return false;
+
+		// Angle check (RETAlL 90°)
+		int angle = 90;
 		if (!PositionUtils.isFacing(target, attacker, angle))
 			return false;
 
-		// Range < 70
+		// Range must be close (retail rule)
 		if (attacker.getDistance(target) > 70)
 			return false;
 
-		// Base rate
+		// BASE BLOCK RATE (START)
 		double blockRate = 5.0;
+
+		// CON contributes heavily to retail shield block
 		blockRate += target.getCON() * 0.4;
+
+		// Shield bonuses from stats XML (rShld)
 		blockRate += target.calcStat(Stats.SHIELD_RATE, attacker, null);
 
-		// STR vs CON penalty
+		// STR vs CON (attacker STR reduces block)
 		if (attacker.getSTR() > target.getCON())
 			blockRate -= (attacker.getSTR() - target.getCON()) * 0.2;
 
@@ -957,19 +917,21 @@ public class Formulas
 		if (target.isMoving())
 			blockRate *= 0.6;
 
-		// Clamp
+		// Clamp retail values
 		blockRate = Math.max(0, Math.min(50, blockRate));
 
 		// Roll normal block
 		if (!Rnd.chance(blockRate))
 			return false;
 
-		// Perfect block = 10% of blockRate
-		if (Rnd.chance(blockRate * 0.1))
+		// PERFECT BLOCK — 5% of blockRate
+		double perfectChance = blockRate * 0.05;
+		if (Rnd.chance(perfectChance))
 			target.setPerfectBlock(true);
 
 		return true;
 	}
+
 
 	public static boolean calcSkillSuccess(Env env, EffectTemplate et, int spiritshot)
 	{
@@ -1394,7 +1356,7 @@ public class Formulas
 			return 1.7;
 		}
 	}
-	
+
 	/**
 	 * Calculates karma lost upon death.
 	 * @param player
@@ -1409,7 +1371,7 @@ public class Formulas
 			exp /= Config.RATE_KARMA_LOST;
 			return (int) ((Math.abs(exp) / karmaLooseMul) / 30);
 		}
-		
+
 		return 0;
 	}
 

@@ -64,7 +64,28 @@ public class PositionUtils
 		}
 		return false;
 	}
-	
+
+	public static boolean isInFront(Creature attacker, Creature target)
+	{
+		if (attacker == null || target == null)
+			return false;
+
+		double angleChar = convertHeadingToDegree(target.getHeading());
+		double angleAttacker = calculateAngleFrom(target, attacker);
+		double angleDiff = angleChar - angleAttacker;
+
+		// Normalize angle
+		if (angleDiff <= (-MAX_ANGLE + FRONT_MAX_ANGLE))
+			angleDiff += MAX_ANGLE;
+
+		if (angleDiff >= (MAX_ANGLE - FRONT_MAX_ANGLE))
+			angleDiff -= MAX_ANGLE;
+
+		// Retail+ frontal range = 120° (60° left, 60° right)
+		return Math.abs(angleDiff) <= FRONT_MAX_ANGLE;  // FRONT_MAX_ANGLE = 60
+	}
+
+
 	/**
 	 * Those are altered formulas for blow lands Return True if the L2Character is behind the target and can't be seen.<BR>
 	 * <BR>
