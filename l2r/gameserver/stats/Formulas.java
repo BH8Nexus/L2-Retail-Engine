@@ -214,6 +214,13 @@ public class Formulas
 			if (blow)
 			{
 				info.damage *= 0.01 * attacker.calcStat(Stats.CRITICAL_DAMAGE, target, skill);
+				  // Retail STR-based critical damage multiplier
+				double baseCritMod = 2.0; // L2OFF baseline
+				double strBonus    = getStrCritBonus(attacker);
+				double totalCritMod = baseCritMod * strBonus;
+
+				info.damage *= totalCritMod;
+
 				info.damage = target.calcStat(Stats.CRIT_DAMAGE_RECEPTIVE, info.damage, attacker, skill);
 				info.damage += 6.1 * info.crit_static;
 			}
@@ -457,6 +464,102 @@ public class Formulas
 		return info;
 	}
 
+	public static boolean calcBlow(Creature attacker, Creature target, Skill skill)
+	{
+		if (attacker == null || target == null || skill == null)
+			return false;
+
+		// 1) BASE RETAIL CONE CHECKS
+		PositionUtils.TargetDirection dir = PositionUtils.getDirectionTo(target, attacker);
+
+		double positionMod = 0.0;
+
+		if (skill.isBehind())
+		{
+			if (dir == PositionUtils.TargetDirection.BEHIND)
+				positionMod = 1.0;
+			else
+				return false;
+		}
+		else
+		{
+			switch (dir)
+			{
+				case BEHIND:
+					positionMod = 1.0;
+					break;
+				case SIDE:
+					positionMod = 0.50;
+					break;
+				default:
+					positionMod = 0.10;
+					break;
+			}
+		}
+
+		// 2) MOVEMENT PENALTY (Retail-like)
+		double moveMod = 1.0;
+
+		if (attacker.isMoving())
+			moveMod -= 0.35;
+
+		if (target.isMoving())
+		{
+			if (PositionUtils.getDirectionTo(attacker, target) == PositionUtils.TargetDirection.BEHIND)
+				moveMod -= 0.30;
+			else
+				moveMod += 0.10;
+		}
+
+		if (moveMod < 0.10)
+			moveMod = 0.10;
+
+		// 3) CUSTOM BASE RATES PER SKILL
+		double baseRate;
+		switch (skill.getId())
+		{
+			case 30:
+				baseRate = 60.0;
+				break;
+			case 263:
+				baseRate = 45.0;
+				break;
+			case 344:
+				baseRate = 35.0;
+				break;
+			case 16:
+				baseRate = 30.0;
+				break;
+			default:
+				baseRate = 40.0;
+		}
+
+		// 4) DEX BONUS
+		double dexMod = 1.0 + ((attacker.getDEX() - 40) * 0.003);
+		if (dexMod < 0.70)
+			dexMod = 0.70;
+
+		// 5) LEVEL DIFFERENCE SCALING
+		int diff = attacker.getLevel() - target.getLevel();
+		double lvlMod = 1.0 + (diff * 0.03);
+		lvlMod = Math.max(0.70, Math.min(1.30, lvlMod));
+
+		// 6) TARGET EVASION
+		double evasionMod = 1.0 - target.calcStat(Stats.PSKILL_EVASION, 0, attacker, skill) / 100.0;
+		if (evasionMod < 0.5)
+			evasionMod = 0.5;
+
+		// 7) FINAL FORMULA
+		double finalChance = baseRate * positionMod * moveMod * dexMod * lvlMod * evasionMod;
+
+		if (finalChance < 1.0)
+			finalChance = 1.0;
+		if (finalChance > 95.0)
+			finalChance = 95.0;
+
+		return Rnd.chance(finalChance);
+	}
+	
 	public static double calcMagicDam(Creature attacker, Creature target, Skill skill, int sps, boolean toMp)
 	{
 		final boolean isCubic = skill.getMatak() > 0;
@@ -692,48 +795,6 @@ public class Formulas
 	public static boolean calcStunBreak(boolean crit)
 	{
 		return Rnd.chance(crit ? 75 : 10);
-	}
-
-	/**
-	 * @param activeChar
-	 * @param target
-	 * @param skill
-	 * @return Returns true in case of fatal blow success
-	 */
-	@SuppressWarnings("incomplete-switch")
-	public static boolean calcBlow(Creature activeChar, Creature target, Skill skill)
-	{
-		WeaponTemplate weapon = activeChar.getActiveWeaponItem();
-
-		double base_weapon_crit = weapon == null ? 4. : weapon.getCritical();
-		double crit_height_bonus = (0.008 * Math.min(25, Math.max(-25, target.getZ() - activeChar.getZ()))) + 1.1;
-		double buffs_mult = activeChar.calcStat(Stats.FATALBLOW_RATE, target, skill);
-		double skill_mod = skill.isBehind() ? 6 : 5; // CT 2.3 blowrate increase
-
-		double chance = base_weapon_crit * buffs_mult * crit_height_bonus * skill_mod;
-
-		if (!target.isInCombat())
-		{
-			chance *= 1.1;
-		}
-
-		switch (PositionUtils.getDirectionTo(target, activeChar))
-		{
-			case BEHIND:
-				chance *= 1.3;
-				break;
-			case SIDE:
-				chance *= 1.1;
-				break;
-			case FRONT:
-				if (skill.isBehind())
-				{
-					chance = 3.0;
-				}
-				break;
-		}
-		chance = Math.min(skill.isBehind() ? 100 : 80, chance);
-		return Rnd.chance(chance);
 	}
 
 	@SuppressWarnings("incomplete-switch")
@@ -1401,4 +1462,19 @@ public class Formulas
 
 		return result;
 	}
+
+    /**
+     * Retail: Critical damage scaling by STR.
+     * Formula: CritDmg = BaseCrit × (1 + (STR - 40) × 0.005)
+     */
+    public static double getStrCritBonus(Creature attacker)
+    {
+        int STR = attacker.getSTR();
+        int baseSTR = 40;
+
+        if (STR <= baseSTR)
+            return 1.0;
+
+        return 1.0 + ((STR - baseSTR) * 0.005);
+    }
 }
