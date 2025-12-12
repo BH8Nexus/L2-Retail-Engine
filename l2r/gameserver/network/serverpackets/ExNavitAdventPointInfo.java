@@ -1,0 +1,19 @@
+package l2r.gameserver.network.serverpackets;
+
+public class ExNavitAdventPointInfo extends L2GameServerPacket
+{
+	private int _points;
+
+	public ExNavitAdventPointInfo(int points)
+	{
+		_points = points;
+	}
+
+	@Override
+	protected final void writeImpl()
+	{
+		//writeEx(0xDF);
+		writeEx(223);
+		writeD(_points);
+	}
+}

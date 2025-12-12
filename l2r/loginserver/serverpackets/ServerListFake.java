@@ -1,0 +1,6 @@
+/*
+ * package l2r.loginserver.serverpackets; import java.net.InetAddress; import org.apache.commons.lang3.ArrayUtils; import org.apache.commons.lang3.tuple.Pair; import l2r.commons.util.ServerNetworkConfiguration; import l2r.loginserver.GameServerManager; import l2r.loginserver.accounts.Account; import
+ * l2r.loginserver.gameservercon.GameServer; public final class ServerListFake extends ServerList { public ServerListFake(Account account) { super(account); // Override _servers.clear(); for (GameServer gs : GameServerManager.getInstance().getGameServers()) { final Pair<Integer, int[]> entry =
+ * account.getAccountInfo(gs.getId()); for (ServerNetworkConfiguration config : gs.getNetworkInterfaces()) { final InetAddress addr = config.getServerAddress(account.getLastIP()); _servers.add(new ServerData(gs.getId(), addr, config.getListenAddress().getPort(), gs.isPvp(), gs.isShowingBrackets(),
+ * gs.getServerType(), gs.getOnline(), gs.getMaxPlayers(), false, entry == null ? 0 : entry.getKey(), gs.getAgeLimit(), entry == null ? ArrayUtils.EMPTY_INT_ARRAY : entry.getValue())); } } } }
+ */

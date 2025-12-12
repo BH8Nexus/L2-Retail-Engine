@@ -1,0 +1,11 @@
+package l2r.gameserver.listener.actor;
+
+import l2r.gameserver.model.Creature;
+import l2r.gameserver.model.Zone;
+
+public interface OnCharEnterLeaveZoneListener
+{
+	void onEnter(Creature p0, Zone p1);
+	
+	void onLeave(Creature p0, Zone p1);
+}
