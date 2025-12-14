@@ -5,26 +5,7 @@ import java.util.Map;
 
 import l2r.commons.data.xml.AbstractHolder;
 import l2r.gameserver.Config;
-import l2r.gameserver.handler.voicecommands.impl.ACP;
-import l2r.gameserver.handler.voicecommands.impl.CFlag;
-import l2r.gameserver.handler.voicecommands.impl.CWHPrivileges;
-import l2r.gameserver.handler.voicecommands.impl.CastleInfo;
-import l2r.gameserver.handler.voicecommands.impl.Cfg;
-import l2r.gameserver.handler.voicecommands.impl.DonateVC;
-import l2r.gameserver.handler.voicecommands.impl.DressMe;
-import l2r.gameserver.handler.voicecommands.impl.FacebookVoice;
-import l2r.gameserver.handler.voicecommands.impl.Hellbound;
-import l2r.gameserver.handler.voicecommands.impl.Offline;
-import l2r.gameserver.handler.voicecommands.impl.Offlinebuff;
-import l2r.gameserver.handler.voicecommands.impl.Online;
-import l2r.gameserver.handler.voicecommands.impl.PFlag;
-import l2r.gameserver.handler.voicecommands.impl.RandomCommands;
-import l2r.gameserver.handler.voicecommands.impl.RegStriderRace;
-import l2r.gameserver.handler.voicecommands.impl.Repair;
-import l2r.gameserver.handler.voicecommands.impl.SevenRb;
-import l2r.gameserver.handler.voicecommands.impl.SkillUse;
-import l2r.gameserver.handler.voicecommands.impl.Vote;
-import l2r.gameserver.handler.voicecommands.impl.Wedding;
+import l2r.gameserver.handler.voicecommands.impl.*;
 
 public class VoicedCommandHandler extends AbstractHolder
 {
@@ -46,6 +27,9 @@ public class VoicedCommandHandler extends AbstractHolder
 		registerVoicedCommandHandler(new DonateVC());
 		registerVoicedCommandHandler(new RegStriderRace());
 		registerVoicedCommandHandler(new DressMe());
+		registerVoicedCommandHandler(new BetaPanel());
+		registerVoicedCommandHandler(new BetaLogVC());
+		registerVoicedCommandHandler(new DebugPanel());
 		registerVoicedCommandHandler(new ACP());
 		registerVoicedCommandHandler(new SkillUse());
 		registerVoicedCommandHandler(new FacebookVoice());

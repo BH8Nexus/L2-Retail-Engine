@@ -2,6 +2,8 @@ package l2r.gameserver.stats;
 
 import l2r.commons.util.Rnd;
 import l2r.gameserver.Config;
+import l2r.gameserver.DebugSystem.CombatEventHook;
+import l2r.gameserver.DebugSystem.DamageBreakdown;
 import l2r.gameserver.data.xml.parser.KarmaData;
 import l2r.gameserver.model.Creature;
 import l2r.gameserver.model.Effect;
@@ -20,7 +22,6 @@ import l2r.gameserver.network.serverpackets.SystemMessage2;
 import l2r.gameserver.network.serverpackets.components.SystemMsg;
 import l2r.gameserver.skills.EffectType;
 import l2r.gameserver.skills.effects.EffectTemplate;
-import l2r.gameserver.templates.item.ArmorTemplate;
 import l2r.gameserver.templates.item.ItemTemplate;
 import l2r.gameserver.templates.item.WeaponTemplate;
 import l2r.gameserver.utils.PositionUtils;
@@ -209,12 +210,13 @@ public class Formulas
 
 			//Заряжаемые скилы имеют постоянный урон
 			if(!skill.isChargeBoost())
-				info.damage *= 1 + (Rnd.get() * attacker.getRandomDamage() * 2 - attacker.getRandomDamage()) / 100;
+				info.damage *= 1 + (Rnd.get(-5, 5) / 100.0); // Retail ±5% variance
 
 			if (blow)
 			{
-				info.damage *= 0.01 * attacker.calcStat(Stats.CRITICAL_DAMAGE, target, skill);
-				  // Retail STR-based critical damage multiplier
+				info.damage *= attacker.calcStat(Stats.CRITICAL_DAMAGE, target, skill) / 100.0;
+
+				// Retail STR-based critical damage multiplier
 				double baseCritMod = 2.0; // L2OFF baseline
 				double strBonus    = getStrCritBonus(attacker);
 				double totalCritMod = baseCritMod * strBonus;
@@ -247,7 +249,7 @@ public class Formulas
 		}
 		else
 		{
-			info.damage *= 1 + (((Rnd.get() * attacker.getRandomDamage() * 2) - attacker.getRandomDamage()) / 100);
+			info.damage *= 1 + (Rnd.get(-5, 5) / 100.0);
 
 			if (dual)
 			{
@@ -353,18 +355,19 @@ public class Formulas
 		{
 			info.damage *= 1.2;
 		}
+
 		if (attacker.isPlayer() && attacker.getPlayer().getClassId() == ClassId.doombringer)
 		{
-			info.damage *= 1.2;
 			if (!attacker.isInOlympiadMode())
-				info.damage *= 1.1;
+				info.damage *= 1.25; // Retail-friendly DB boost
 		}
+
 		if (attacker.isPlayer() && target.isPlayer() && blow && target.getPlayer().isMageClass())
 		{
-			info.damage *= 1.2;
 			if (!attacker.isInOlympiadMode())
-				info.damage *= 1.1;
+				info.damage *= 1.15;
 		}
+
 
 		// Then only check if skill! = Null, since Player.onHitTimer not cheat damage.
 		if (skill != null)
@@ -458,6 +461,31 @@ public class Formulas
 				target.abortCast(false, true);
 			}
 		}
+
+		// ===============================================
+		// DEBUG DAMAGE BREAKDOWN HOOK
+		// ===============================================
+		try
+		{
+			DamageBreakdown dbg = new DamageBreakdown();
+
+			dbg.basePower = info.damage; // προ damage modifiers
+			dbg.pAtk = attacker.getPAtk(target);
+			dbg.pDef = target.getPDef(attacker);
+			dbg.ssBoost = ss ? 2.0 : 1.0;
+			dbg.critMultiplier = info.crit ? 2.0 : 1.0;
+			dbg.finalDamage = info.damage;
+
+			int skillId = (skill != null ? skill.getId() : 0);
+
+			CombatEventHook.onDamageWithBreakdown(attacker, target, skillId, dbg);
+		}
+		catch (Exception e)
+		{
+			System.out.println("[DamageBreakdown] Error: " + e.getMessage());
+		}
+		// ===============================================
+
 		return info;
 	}
 
@@ -762,29 +790,23 @@ public class Formulas
 			target.abortCast(false, true);
 		}
 
+		// === ΕΔΩ ΒΑΖΕΙΣ ΤΟ BREAKDOWN ===
+		try
+		{
+			DamageBreakdown dbg = new DamageBreakdown();
+			dbg.basePower = power;
+			dbg.mAtk = mAtk;
+			dbg.mDef = mdef;
+			dbg.ssBoost = (sps == 2 ? 4 : sps == 1 ? 2 : 1);
+			dbg.lethalDamage = lethalDamage;
+			dbg.finalDamage = damage;
 
-		//FIXME siege manager
-//		//FIXME TESTMY
-//		if (target.isAttackable(attacker))
-//		{
-//			damage *= attacker.calcStat(Stats.PVP_MAGIC_SKILL_DMG_BONUS, 1, null, null);
-//			if (!target.isRaid() && !target.isMinion() && (target.getLevel() >= Config.MIN_NPC_LEVEL_DMG_PENALTY) && (attacker != null) && ((target.getLevel() - attacker.getLevel()) >= 2))
-//			{
-//				final int levelDiff2 = target.getLevel() - attacker.getLevel() - 1;
-//				if (levelDiff2 >= Config.NPC_SKILL_DMG_PENALTY.length)
-//				{
-//					damage *= Config.NPC_SKILL_DMG_PENALTY[Config.NPC_SKILL_DMG_PENALTY.length - 1];
-//				}
-//				else
-//				{
-//					damage *= Config.NPC_SKILL_DMG_PENALTY[levelDiff];
-//				}
-//			}
-//		}
+			int skillId = skill != null ? skill.getId() : 0;
+			CombatEventHook.onDamageWithBreakdown(attacker, target, skillId, dbg);
+		}
+		catch (Exception e){}
 
-		// Synerge - Add the damage done to the player stats
-		//		if (attacker.isPlayer() && damage > 5)
-		//			attacker.getPlayer().addPlayerStats(Ranking.STAT_TOP_DAMAGE, (long)damage);
+		// === ΤΕΛΟΣ BREAKDOWN ===
 
 		return damage;
 	}

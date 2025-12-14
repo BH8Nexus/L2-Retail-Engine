@@ -20,6 +20,7 @@ import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
+import l2r.gameserver.DebugSystem.CombatEventHook;
 import l2r.gameserver.ai.DefaultAI;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -1375,70 +1376,88 @@ public abstract class Creature extends GameObject
 	{
 		return (_blockedStats != null) && _blockedStats.contains(stat);
 	}
-	
+
 	public boolean checkReflectSkill(Creature attacker, Skill skill)
 	{
-		if (!skill.isReflectable())
-		{
+		if (!skill.isReflectable() || isInvul() || attacker.isInvul() || !skill.isOffensive())
 			return false;
-		}
 
-		if (isInvul() || attacker.isInvul() || !skill.isOffensive())
-		{
+		if (skill.isMagic() && skill.getSkillType() != SkillType.MDAM)
 			return false;
-		}
-		
-		if (skill.isMagic() && (skill.getSkillType() != SkillType.MDAM))
-		{
+
+		if (!Rnd.chance(calcStat(skill.isMagic() ?
+				Stats.REFLECT_MAGIC_SKILL : Stats.REFLECT_PHYSIC_SKILL, 0, attacker, skill)))
 			return false;
-		}
-		if (Rnd.chance(calcStat(skill.isMagic() ? Stats.REFLECT_MAGIC_SKILL : Stats.REFLECT_PHYSIC_SKILL, 0, attacker, skill)))
+
+		sendPacket(new SystemMessage2(SystemMsg.YOU_COUNTERED_C1S_ATTACK).addName(attacker));
+		attacker.sendPacket(new SystemMessage2(SystemMsg.C1_DODGES_THE_ATTACK).addName(this));
+
+		// LOG REFLECT EVENT
+		try
 		{
-			sendPacket(new SystemMessage2(SystemMsg.YOU_COUNTERED_C1S_ATTACK).addName(attacker));
-			attacker.sendPacket(new SystemMessage2(SystemMsg.C1_DODGES_THE_ATTACK).addName(this));
-			return true;
+			CombatEventHook.onDamage(
+					this,           // attacker (reflection source)
+					attacker,       // target (damage receiver)
+					(skill != null ? skill.getId() : 0),
+					0.0,            // damage (reflection has no dmg)
+					false,
+					false
+			);
+
 		}
-		return false;
+		catch (Exception e) {}
+
+		return true;
 	}
-	
+
 	public void doCounterAttack(Skill skill, Creature attacker, boolean blow)
 	{
 		if (isDead())
-		{
 			return;
-		}
-		if (isDamageBlocked() || attacker.isDamageBlocked())
-		{
+
+		if (isDamageBlocked() || (attacker != null && attacker.isDamageBlocked()))
 			return;
-		}
-		
-		if ((skill == null) || skill.hasEffects() || skill.isMagic() || !skill.isOffensive() || (skill.getCastRange() > 200))
-		{
+
+		if (skill == null || skill.hasEffects() || skill.isMagic() || !skill.isOffensive() || skill.getCastRange() > 200)
 			return;
-		}
-		
-//		final int numberOfAttacks = skill.getNumberOfCounterAttacks();
-//		if (numberOfAttacks <= 0)
-//		{
-//			return;
-//		}
-		
-		if (Rnd.chance(calcStat(Stats.COUNTER_ATTACK, 0.0D, attacker, skill)))
+
+		if (!Rnd.chance(calcStat(Stats.COUNTER_ATTACK, 0.0D, attacker, skill)))
+			return;
+
+		double damage = (1189 * getPAtk(attacker)) / Math.max(attacker.getPDef(this), 1);
+
+		attacker.sendPacket(new SystemMessage2(SystemMsg.C1_IS_PERFORMING_A_COUNTERATTACK).addName(this));
+
+		if (blow)
+			damage *= 2;
+
+		sendPacket(new SystemMessage2(SystemMsg.C1_HAS_DONE_S3_POINTS_OF_DAMAGE_TO_C2)
+				.addName(this).addName(attacker).addInteger((long) damage));
+
+		// ----------------------------------------------------
+		// DEBUG HOOK (SAFE)
+		// ----------------------------------------------------
+		try
 		{
-			double damage = (1189 * getPAtk(attacker)) / Math.max(attacker.getPDef(this), 1);
-			attacker.sendPacket(new SystemMessage2(SystemMsg.C1_IS_PERFORMING_A_COUNTERATTACK).addName(this));
-			if (blow) // damage x2 to reflect blow skills
-			{
-				sendPacket(new SystemMessage2(SystemMsg.C1_IS_PERFORMING_A_COUNTERATTACK).addName(this));
-				sendPacket(new SystemMessage2(SystemMsg.C1_HAS_DONE_S3_POINTS_OF_DAMAGE_TO_C2).addName(this).addName(attacker).addInteger((long) damage));
-				attacker.reduceCurrentHp(damage, this, skill, true, true, false, false, false, false, true);
-			}
-			else
-				sendPacket(new SystemMessage2(SystemMsg.C1_IS_PERFORMING_A_COUNTERATTACK).addName(this));
-			sendPacket(new SystemMessage2(SystemMsg.C1_HAS_DONE_S3_POINTS_OF_DAMAGE_TO_C2).addName(this).addName(attacker).addInteger((long) damage));
-			attacker.reduceCurrentHp(damage, this, skill, true, true, false, false, false, false, true);
+			CombatEventHook.onDamage(
+					this,                               // attacker (counterattack source)
+					attacker,                           // target
+					(skill != null ? skill.getId() : 0),
+					damage,                             // <<< REQUIRED
+					false,                              // crit
+					false                               // miss
+			);
 		}
+		catch (Exception e)
+		{
+			System.out.println("[CombatEventHook] CounterAttack Error: " + e.getMessage());
+		}
+		// ----------------------------------------------------
+
+		attacker.reduceCurrentHp(damage, this, skill, true, true, false, false, false, false, true);
 	}
+
+
 	/**
 	 * Disable this skill id for the duration of the delay in milliseconds.
 	 * @param skill
@@ -1812,32 +1831,6 @@ public abstract class Creature extends GameObject
 		{
 			return;
 		}
-		
-//		for (GlobalEvent e : getEvents())
-//		{
-//			if (!e.canUseSkill(this, target, skill))
-//			{
-//				sendMessage("The skill you are trying to cast is not allowed in your current state");
-//				return;
-//			}
-//		}
-//
-//		int itemConsume[] = skill.getItemConsume();
-//
-//		if (itemConsume[0] > 0)
-//			for (int i = 0; i < itemConsume.length; i++)
-//				if (!consumeItem(skill.getItemConsumeId()[i], itemConsume[i]))
-//				{
-//					sendPacket(skill.isHandler() ? SystemMsg.INCORRECT_ITEM_COUNT : SystemMsg.THERE_ARE_NOT_ENOUGH_NECESSARY_ITEMS_TO_USE_THE_SKILL);
-//					return;
-//				}
-//
-//		if (skill.getReferenceItemId() > 0)
-//			if (!consumeItemMp(skill.getReferenceItemId(), skill.getReferenceItemMpConsume()))
-//				return;
-//
-//
-
 		if (target == null)
 			target = skill.getAimingTarget(this, getTarget());
 		if (target == null)
@@ -4288,51 +4281,75 @@ public abstract class Creature extends GameObject
 		}
 		onReduceCurrentHp(damage, attacker, skill, awake, standUp, directHp);
 	}
-	
-	protected void onReduceCurrentHp(final double damage, Creature attacker, Skill skill, boolean awake, boolean standUp, boolean directHp)
+
+	protected void onReduceCurrentHp(final double damage, Creature attacker, Skill skill,
+									 boolean awake, boolean standUp, boolean directHp)
 	{
-		// Synerge - Player is in Fight Club, then set damage done
-		if ((attacker != null) && attacker.isPlayable() && attacker.getPlayer().isInFightClub())
+		// Fight Club Support
+		if (attacker != null && attacker.isPlayable() && attacker.getPlayer().isInFightClub())
 		{
 			attacker.getPlayer().getFightClubEvent().onDamage(attacker, this, damage);
 		}
-		
+
+		// Wake-up from sleep
 		if (awake && isSleeping())
 		{
 			getEffectList().stopEffects(EffectType.Sleep);
 		}
-		
-		if ((attacker != this) || ((skill != null) && skill.isOffensive()))
+
+		// Normal combat reaction
+		if ((attacker != this) || (skill != null && skill.isOffensive()))
 		{
 			if (isMeditated())
 			{
 				Effect effect = getEffectList().getEffectByType(EffectType.Meditation);
 				if (effect != null)
-				{
 					getEffectList().stopEffect(effect.getSkill());
-				}
 			}
-			
+
 			startAttackStanceTask();
 			checkAndRemoveInvisible();
 			_lastAttackedTime = System.currentTimeMillis();
-			
+
 			if (getCurrentHp() < 0.5)
-			{
 				useTriggers(attacker, TriggerType.DIE, null, null, damage);
-			}
 		}
-		
+
+		// APPLY FINAL DAMAGE – ONE TIME ONLY
 		setCurrentHp(Math.max(getCurrentHp() - damage, 0), false);
-		
+
+		// ----------------------------------------------------
+		// DEBUG HOOK (SAFE)
+		// ----------------------------------------------------
+		// DEBUG HOOK
+		try
+		{
+			CombatEventHook.onDamage(
+					attacker,                           // attacker
+					this,                               // target
+					(skill != null ? skill.getId() : 0),
+					damage,                             // <<< REQUIRED
+					false,                              // crit
+					false                               // miss
+			);
+		}
+		catch (Exception e)
+		{
+			System.out.println("[CombatEventHook] Error: " + e.getMessage());
+		}
+		// ----------------------------------------------------
+
+		// Death check
 		if (getCurrentHp() < 0.5)
 		{
-			if (!isPlayer() || !(getPlayer().isInOlympiadMode() && (getPlayer().getOlympiadGame().getType() != CompType.TEAM)))
+			if (!isPlayer() || !(getPlayer().isInOlympiadMode()
+					&& getPlayer().getOlympiadGame().getType() != CompType.TEAM))
 			{
 				doDie(attacker);
 			}
 		}
 	}
+
 	
 	public void reduceCurrentMp(double i, Creature attacker)
 	{
