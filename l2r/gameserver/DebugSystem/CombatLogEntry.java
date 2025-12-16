@@ -1,11 +1,15 @@
 package l2r.gameserver.DebugSystem;
 
+import l2r.gameserver.DebugSystem.testpvp.RangeType;
 import l2r.gameserver.model.Creature;
+import l2r.gameserver.model.Player;
+import l2r.gameserver.model.base.ClassId;
 
 public class CombatLogEntry
 {
     public long time;
-
+    public ClassId attackerClassId;
+    public ClassId targetClassId;
     public String attackerName;
     public String targetName;
 
@@ -27,7 +31,7 @@ public class CombatLogEntry
     public boolean miss;
     public boolean reflect;
     public boolean counter;
-
+    public RangeType rangeType;
     public String extraInfo;
 
     public CombatLogEntry()
@@ -38,28 +42,46 @@ public class CombatLogEntry
     public void setAttacker(Creature c)
     {
         if (c == null) return;
+
         attackerName = c.getName();
         attackerId = c.getObjectId();
+
+        if (c instanceof Player)
+            attackerClassId = ((Player) c).getClassId();
+
     }
+
 
     public void setTarget(Creature c)
     {
         if (c == null) return;
+
         targetName = c.getName();
         targetId = c.getObjectId();
+
+        if (c instanceof Player)
+            targetClassId = ((Player) c).getClassId();
+
     }
+
 
     public String toSimpleLine()
     {
         StringBuilder sb = new StringBuilder();
 
-        sb.append("[").append(new java.text.SimpleDateFormat("HH:mm:ss").format(time)).append("] ");
+        sb.append("[")
+                .append(new java.text.SimpleDateFormat("HH:mm:ss").format(time))
+                .append("] ");
 
-        sb.append(attackerName).append(" → ").append(targetName);
+        sb.append(attackerName)
+                .append(" → ")
+                .append(targetName);
 
         sb.append(" | Skill=").append(skillId);
+        sb.append(" | Dmg=").append((long) finalDamage);
 
-        sb.append(" | Dmg=").append((long)finalDamage);
+        if (rangeType != null)
+            sb.append(" | ").append(rangeType.name());
 
         if (crit) sb.append(" | CRIT");
         if (miss) sb.append(" | MISS");
@@ -68,6 +90,7 @@ public class CombatLogEntry
 
         return sb.toString();
     }
+
     public String toBreakdownText()
     {
         StringBuilder sb = new StringBuilder();

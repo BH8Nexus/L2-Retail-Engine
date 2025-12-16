@@ -1,6 +1,9 @@
 package l2r.gameserver.DebugSystem;
 
+import l2r.gameserver.DebugSystem.range.RangeClassifier;
+import l2r.gameserver.DebugSystem.testpvp.RangeType;
 import l2r.gameserver.model.Creature;
+import l2r.gameserver.model.Player;
 
 public class CombatEventHook
 {
@@ -27,6 +30,19 @@ public class CombatEventHook
             log.crit = crit;
             log.miss = miss;
 
+            // 🔥 RANGE CLASSIFICATION ΜΠΑΙΝΕΙ ΕΔΩ
+            if (attacker instanceof Player && target instanceof Player)
+            {
+                log.rangeType = RangeClassifier.classify(
+                        (Player) attacker,
+                        (Player) target
+                );
+            }
+            else
+            {
+                log.rangeType = RangeType.MID; // safe default
+            }
+
             String msg = "[DMG] " + log.attackerName + " → " + log.targetName +
                     " | Skill=" + log.skillId +
                     " | Dmg=" + (long)log.finalDamage +
@@ -38,7 +54,9 @@ public class CombatEventHook
             CombatLogCollector.push(target.getObjectId(), log);
 
             // SEND live debug message
-            LiveDebug.sendColoredEvent(attacker, msg,
+            LiveDebug.sendColoredEvent(
+                    attacker,
+                    log.toSimpleLine(),
                     miss ? LiveDebug.YELLOW :
                             crit ? LiveDebug.ORANGE :
                                     log.finalDamage > 1000 ? LiveDebug.RED : LiveDebug.GREEN
@@ -65,10 +83,20 @@ public class CombatEventHook
             {{
                 setAttacker(attacker);
                 setTarget(target);
+
                 this.skillId = skillId;
                 this.finalDamage = info.finalDamage;
                 this.extraInfo = info.toString();
+
+                if (attacker instanceof Player && target instanceof Player)
+                    this.rangeType = RangeClassifier.classify(
+                            (Player) attacker,
+                            (Player) target
+                    );
+                else
+                    this.rangeType = RangeType.MID;
             }});
+
 
             // 2. SEND LIVE DEBUG (attacker only)
             LiveDebug.sendBreakdown(attacker, info);

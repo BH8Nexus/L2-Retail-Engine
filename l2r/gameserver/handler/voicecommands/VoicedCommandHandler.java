@@ -27,8 +27,6 @@ public class VoicedCommandHandler extends AbstractHolder
 		registerVoicedCommandHandler(new DonateVC());
 		registerVoicedCommandHandler(new RegStriderRace());
 		registerVoicedCommandHandler(new DressMe());
-		registerVoicedCommandHandler(new BetaPanel());
-		registerVoicedCommandHandler(new BetaLogVC());
 		registerVoicedCommandHandler(new DebugPanel());
 		registerVoicedCommandHandler(new ACP());
 		registerVoicedCommandHandler(new SkillUse());
